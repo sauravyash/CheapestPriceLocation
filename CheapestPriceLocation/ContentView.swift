@@ -93,12 +93,11 @@ struct APIStation: Codable, Hashable, Identifiable {
 	static func == (lhs: APIStation, rhs: APIStation) -> Bool {
 		return lhs.id == rhs.id
 	}
-	
-	let id: String
+	var id: String
 	var name: String
 	var brand: String
 	var state: String
-	var suburb: String?
+	var suburb: String
 	var address: String
 	var postCode: String?
 	var country: String?
@@ -154,7 +153,28 @@ func decodeAPI(data: Data) throws -> JSONAPI? {
     }
 }
 
-func FetchPrices() -> [APIStation] {
+func RequestPrice(URLString: String, completion: @escaping (Result<[APIStation], Error>)->()) {
+	let url = URL(string: URLString)!
+	let task = URLSession.shared.dataTask(with: url) {
+		(data, response, error) in
+		
+		guard let data = data else { return }
+		
+		do {
+			let APIData = try decodeAPI(data: data)
+			print(APIData?.message.list ?? "nil")
+			completion(.success(APIData?.message.list ?? []))
+		}
+		catch let e {
+			completion(.failure(e))
+		}
+	}
+	task.resume()
+}
+
+func FetchPrices() {
+	let serialQueue = DispatchQueue(label: "loadingSerialQueue")
+	
 	let init_lat: Int16 = -15
 	let lat_interval: Int16 = 1
 	let max_lat: Int16 = -45
@@ -169,45 +189,31 @@ func FetchPrices() -> [APIStation] {
 	
 //	var progress:Int8 = 0
 //	var completed:Int8 = 0
-
-	for lat in 0...lat_range {
-		for long in 0...long_range {
-			let URLString = "https://petrolspy.com.au/webservice-1/station/box?neLat=" + String(init_lat - lat) + "&neLng=" + String(init_long + long + long_interval) +
-				"&swLat=" + String(init_lat - lat - lat_interval) +
-				"&swLng=" + String(init_long + long)
-			
-			let url = URL(string: URLString)!
-			let task = URLSession.shared.dataTask(with: url) {
-				(data, response, error) in
+	
+	serialQueue.async {
+		for lat in 0...lat_range {
+			for long in 0...long_range {
+				let url = "https://petrolspy.com.au/webservice-1/station/box?neLat=" + String(init_lat - lat) + "&neLng=" + String(init_long + long + long_interval) +
+					"&swLat=" + String(init_lat - lat - lat_interval) +
+					"&swLng=" + String(init_long + long)
 				
-				guard let data = data else { return }
-				
-				do {
-					let APIData = try decodeAPI(data: data)
-					print(APIData?.message.list ?? "nil")
-					for station in (APIData?.message.list ?? []) {
-						stationData.append(station)
+				RequestPrice(URLString: url) { (res) in
+					switch res {
+					case .success(let stations):
+						stations.forEach{(station) in
+							ContentView.fuelPrices.append(station)
+						}
+							break
+						default:
+							break
 					}
-//					completed += 1
-//					progress = Int8(
-//						(
-//							Float32(
-//								Int32(completed) / Int32(long_range)
-//							)
-//							/ Float32(lat_range)
-//						)
-//					* 100)
-//
-//					print(progress)
 				}
-				catch let e {
-					print("JSON Decode Error: ", e)
+				if (lat == lat_range && long == long_range) {
+					ContentView.isLoadingFuel = false
 				}
 			}
-			task.resume()
 		}
 	}
-	return stationData
 }
 
 func FindCheapest(stationData: [APIStation], fuel: String, count: Int = 5) -> [APIStation] {
@@ -247,28 +253,72 @@ struct StationRow: View {
     }
 }
 
-func ListBody(modelData: [APIStation], fuel: String) -> some View {
-	
-	return List(modelData, id: \.id) { station in
+func ListBody(modelData: [APIStation]?, fuel: String) -> some View {
+	return List(modelData ?? [], id: \.id) { station in
 		HStack {
-//			Image(nil)
-//				.frame(width: CGFloat(50), height: CGFloat(10), alignment: .leading)
-			Text("\(station.prices.U91?.amount, specifier: "%.2f")c")
+			Image(systemName: "gauge")
+				.frame(width: CGFloat(50), height: CGFloat(10), alignment: .leading)
+			Text(String(format: "%.1f", station.prices.U91?.amount ?? 0) + "c")
 				.frame(width: CGFloat(50), height: CGFloat(10), alignment: .leading)
 			VStack {
-				Text("\(station.suburb ?? "unknown"), \(station.state)")
+				Text("\(station.suburb), \(station.state)")
 			}
 		}.font(.title)
     }
 }
 
+struct LoadingIcon: View {
+	@State private var animateTrimmedCicle = true
+    @State private var animateInnerCicle = false
+
+	var body: some View {
+		ZStack {
+			Circle()
+				.frame(width: 30, height: 30)
+				.foregroundColor(Color(#colorLiteral(red: 0, green: 0, blue: 0, alpha: 1)))
+				.scaleEffect(animateInnerCicle ? 1 : 0.5)
+				.animation(Animation.interpolatingSpring(stiffness: 100, damping: 20).speed(1).repeatForever(autoreverses: true))
+				 .onAppear() {
+					self.animateInnerCicle.toggle()
+			}
+			ZStack {
+				Circle()
+					.trim(from: 3/4, to: 1)
+					.stroke(style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+					.frame(width: 50, height: 50)
+					.foregroundColor(Color(#colorLiteral(red: 0.2392156869, green: 0.6745098233, blue: 0.9686274529, alpha: 1)))
+				Circle()
+					.trim(from: 3/4, to: 1)
+					.stroke(style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+					.frame(width: 50, height: 50)
+					.foregroundColor(Color(#colorLiteral(red: 0.2392156869, green: 0.6745098233, blue: 0.9686274529, alpha: 1)))
+					.rotationEffect(.degrees(-180))
+			}.scaleEffect(animateTrimmedCicle ? 1 : 0.4 )
+				.rotationEffect(.degrees(animateTrimmedCicle ? 1080 : 0))
+				.animation(Animation.interpolatingSpring(stiffness: 100, damping: 20).speed(1).repeatForever(autoreverses: true))
+				 .onAppear() {
+					self.animateTrimmedCicle.toggle()
+				}
+		}
+	}
+}
+
 struct ContentView: View {
-	var stationData = FetchPrices()
-    @State private var tab = 1
-	@State var fuel = "U91"
-	var fuelPrices : [APIStation]
+	let serialQueue = DispatchQueue(label: "loadingSerialQueue")
+	@State var loadProgress = 0
 	
- 
+    @State private var tab = 1
+	@State var stationDisplayState = displayState.unloaded
+	@State var selectedFuel = "U91"
+	@State static var isLoadingFuel = false
+	static var fuelPrices : [APIStation] = []
+	
+	enum displayState {
+		case unloaded
+		case loading
+		case loaded
+	}
+	
     var body: some View {
 		TabView(selection: $tab){
 			MapView()
@@ -285,20 +335,46 @@ struct ContentView: View {
 					.font(.title)
 					.padding(.bottom)
 				
-				Button(action: {
-					$fuelPrices = FindCheapest(stationData: stationData)
-					
-				}) {
-					Text("Find")
+				
+				if (stationDisplayState == .loading) {
+					VStack {
+						LoadingIcon()
+							.padding(.vertical)
+						Text("\(loadProgress)%")
+					}
 				}
-				
-				Spacer()
-				
-				VStack {
-					ListBody(modelData: $fuelPrices, fuel: $fuel)
+				else if(stationDisplayState == .loaded) {
+					Picker(selection: $selectedFuel, label: Text("")) {
+						Text("U91").tag(1)
+						Text("E10").tag(2)
+						Text("Diesel").tag(3)
+						Text("U95").tag(4)
+						Text("U98").tag(5)
+					}
+					ListBody(
+						modelData: FindCheapest(
+							stationData: ContentView.fuelPrices,
+							fuel: selectedFuel
+						),
+						fuel: selectedFuel
+					)
+				} else {
+					Button(action: {
+						self.serialQueue.sync {
+							self.stationDisplayState = .loading
+							ContentView.isLoadingFuel = true
+							FetchPrices()
+							
+							if (ContentView.isLoadingFuel == false) {
+								self.stationDisplayState = .loaded
+							}
+								
+						}
+						
+					}) {
+						Text("Find")
+					}
 				}
-				
-				Spacer()
 			}
                 .tabItem {
                     VStack {
@@ -311,8 +387,10 @@ struct ContentView: View {
     }
 }
 
+
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
-        ContentView()
+		let contentView = ContentView()
+		return contentView
     }
 }

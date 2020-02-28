@@ -1,0 +1,6 @@
+framework module Pods_CheapestPriceLocationUITests {
+  umbrella header "Pods-CheapestPriceLocationUITests-umbrella.h"
+
+  export *
+  module * { export * }
+}

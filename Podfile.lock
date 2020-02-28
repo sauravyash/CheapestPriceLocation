@@ -1,0 +1,16 @@
+PODS:
+  - LocationSpoofer (0.1.0)
+
+DEPENDENCIES:
+  - LocationSpoofer
+
+SPEC REPOS:
+  https://github.com/cocoapods/specs.git:
+    - LocationSpoofer
+
+SPEC CHECKSUMS:
+  LocationSpoofer: 39f17a74cfee74c7eb6d1a4655d1d91556ee6e09
+
+PODFILE CHECKSUM: 3b20a2f2c2123d140a3616101ab44c936c697f09
+
+COCOAPODS: 1.5.3
